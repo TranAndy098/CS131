@@ -227,12 +227,12 @@ int main(int argc, char* argv[])
         double dtime_static = omp_get_wtime();
         compute_prewitt_static();
         dtime_static = omp_get_wtime() - dtime_static;
-        std::cout << dtime_static << std::endl;
+        std::cout << "Time for static scheduling: " << dtime_static << std::endl;
     } else {
         double dtime_dyn = omp_get_wtime();
         compute_prewitt_dynamic();
         dtime_dyn = omp_get_wtime() - dtime_dyn;
-        std::cout << dtime_dyn << std::endl;
+        std::cout << "Time for dynamic scheduling: " << dtime_dyn << std::endl;
     }
 
     
@@ -256,7 +256,7 @@ int main(int argc, char* argv[])
 
     for (long unsigned i = 0; i < thread_starts.size(); i++) {
         for (long unsigned j = 0; j < thread_starts[i].size(); j++) {
-            std::cout << i << " with " << thread_starts[i][j] << std::endl;
+            std::cout << "Thread " << i << " -> Processing Chunk starting at Row " << thread_starts[i][j] << std::endl;
     }
     }
 
