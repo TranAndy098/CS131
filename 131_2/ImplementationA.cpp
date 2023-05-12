@@ -16,9 +16,10 @@
 int image_height;
 int image_width;
 int image_maxShades;
-int inputImage[3000][2000]; //should be dynamic for diffrent image sizes
-int outputImage[3000][2000]; //should be dynamic for diffrent image sizes
+int inputImage[5000][5000]; //should be dynamic for diffrent image sizes
+int outputImage[5000][5000]; //should be dynamic for diffrent image sizes
 int numChunks;
+int thread_num = 4;
 
 std::map<int, std::vector<int>> thread_starts;
 
@@ -38,14 +39,17 @@ maskY[1][0] =   0; maskY[1][1] =   0; maskY[1][2] =    0;
 maskY[2][0] =  -1; maskY[2][1] =  -1; maskY[2][2] =  -1;
 
 int x, y;
-int chunk_size = image_height/numChunks;
+int chunk_size = ceil(image_height/numChunks);
 
-#pragma omp parallel private(x) shared(inputImage, outputImage, image_height, image_width, thread_starts) num_threads(8)
+#pragma omp parallel private(x) shared(inputImage, outputImage, image_height, image_width, thread_starts) num_threads(thread_num)
 {
     #pragma omp for schedule(static, chunk_size) private(y)
     for(x = 0; x < image_height; ++x ){
         if (x%chunk_size == 0) {
+            #pragma omp critical 
+            {
             thread_starts[omp_get_thread_num()].push_back(x);
+            }
         }
         for(y = 0; y < image_width;  ++y ){
             int grad_x = 0;
@@ -97,14 +101,17 @@ maskY[2][0] =  -1; maskY[2][1] =  -1; maskY[2][2] =  -1;
 
 int x = 0;
 int y = 0;
-int chunk_size = image_height/numChunks;
+int chunk_size = ceil(image_height/numChunks);
 
-#pragma omp parallel private(x) shared(inputImage, outputImage, image_height, image_width, thread_starts) num_threads(8)
+#pragma omp parallel private(x) shared(inputImage, outputImage, image_height, image_width, thread_starts) num_threads(thread_num)
 {
     #pragma omp for schedule(dynamic, chunk_size) private(y)
     for(x = 0; x < image_height; ++x ){
         if (x%chunk_size == 0) {
+            #pragma omp critical 
+            {
             thread_starts[omp_get_thread_num()].push_back(x);
+            }
         }
         for (y = 0; y < image_width;  ++y ){
             int grad_x = 0;
@@ -254,11 +261,11 @@ int main(int argc, char* argv[])
         return 0;
     }
 
-    for (long unsigned i = 0; i < thread_starts.size(); i++) {
-        for (long unsigned j = 0; j < thread_starts[i].size(); j++) {
-            std::cout << "Thread " << i << " -> Processing Chunk starting at Row " << thread_starts[i][j] << std::endl;
-    }
-    }
+    // for (long unsigned i = 0; i < thread_starts.size(); i++) {
+    //     for (long unsigned j = 0; j < thread_starts[i].size(); j++) {
+    //         std::cout << "Thread " << i << " -> Processing Chunk starting at Row " << thread_starts[i][j] << std::endl;
+    // }
+    // }
 
     return 0;
 }
