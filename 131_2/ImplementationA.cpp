@@ -19,7 +19,7 @@ int image_maxShades;
 int inputImage[5000][5000]; //should be dynamic for diffrent image sizes
 int outputImage[5000][5000]; //should be dynamic for diffrent image sizes
 int numChunks;
-int thread_num = 4;
+int thread_num = 8;
 
 std::map<int, std::vector<int>> thread_starts;
 
@@ -38,8 +38,11 @@ maskY[0][0] = +1; maskY[0][1] = +1; maskY[0][2] = +1;
 maskY[1][0] =   0; maskY[1][1] =   0; maskY[1][2] =    0;
 maskY[2][0] =  -1; maskY[2][1] =  -1; maskY[2][2] =  -1;
 
-int x, y;
+int x = 0;
+int y = 0;
 int chunk_size = ceil(image_height/numChunks);
+
+// currently spliting iterations of x into threads, but if we wanted to split the iterations of y then we would collapse(2) in the pragama and have it push to thread_starts in the y loop
 
 #pragma omp parallel private(x) shared(inputImage, outputImage, image_height, image_width, thread_starts) num_threads(thread_num)
 {
@@ -102,6 +105,8 @@ maskY[2][0] =  -1; maskY[2][1] =  -1; maskY[2][2] =  -1;
 int x = 0;
 int y = 0;
 int chunk_size = ceil(image_height/numChunks);
+
+// currently spliting iterations of x into threads, but if we wanted to split the iterations of y then we would collapse(2) in the pragama and have it push to thread_starts in the y loop
 
 #pragma omp parallel private(x) shared(inputImage, outputImage, image_height, image_width, thread_starts) num_threads(thread_num)
 {
@@ -261,11 +266,11 @@ int main(int argc, char* argv[])
         return 0;
     }
 
-    // for (long unsigned i = 0; i < thread_starts.size(); i++) {
-    //     for (long unsigned j = 0; j < thread_starts[i].size(); j++) {
-    //         std::cout << "Thread " << i << " -> Processing Chunk starting at Row " << thread_starts[i][j] << std::endl;
-    // }
-    // }
+    for (long unsigned i = 0; i < thread_starts.size(); i++) {
+        for (long unsigned j = 0; j < thread_starts[i].size(); j++) {
+            std::cout << "Thread " << i << " -> Processing Chunk starting at Row " << thread_starts[i][j] << std::endl;
+    }
+    }
 
     return 0;
 }
