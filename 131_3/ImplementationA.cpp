@@ -8,28 +8,25 @@
 #include <iostream>
 #include <vector>
 #include <mpi.h>
-
-int fill_arrays(int argc, char* argv[]);
-void output_result(int argc, char* argv[]);
  
+int input_data(int argc, char* argv[]);
+int output_data(int argc, char* argv[]);
+
+// mpic++ -std=c++11 ImplementationA.cpp -o ImplementationA
+// mpirun -np 4 ./ImplementationA test1.pgm adj1.txt output1.txt
+
+// assumption is that adjacency matrix has dimensions similar to pgms
+
 /* Global variables, Look at their usage in main() */
 int image_height;
 int image_width;
-int image_maxShades;
 int adj_height;
 int adj_width;
-int inputImage[5000*5000];
-int adjMatrix[5000*5000];
-int output[256];
+int image_maxShades;
+int inputImage[25000000];
+int adjMatrix[25000000];
+int outputImage[256];
 
-//mpic++ -std=c++11 ImplementationA.cpp -o ImplementationA
-//mpirun -np 4 ./ImplementationA test1.pgm adj1.txt output1.txt
-
-/* ****************Change and add functions below ***************** */
-void compute_histogram()
-{
-
-}
 /* **************** Change the function below if you need to ***************** */
 
 int main(int argc, char* argv[])
@@ -40,132 +37,76 @@ int main(int argc, char* argv[])
     MPI_Comm_size(MPI_COMM_WORLD, &size_Of_Cluster);
     MPI_Comm_rank(MPI_COMM_WORLD, &process_Rank);
 
-
-    int size;
-    int adj_size;
+    int sizes[2];
     if (process_Rank == 0)
     {
-        if (fill_arrays(argc, argv) == -1)
+        if (input_data(argc, argv) == 0)
         {
             MPI_Finalize();
             return 0;
         }
-
-        size = (image_height*image_width)/size_Of_Cluster;
-        adj_size = adj_width;
+        sizes[0] = (image_height*image_width)/size_Of_Cluster;
+        sizes[1] = adj_width;
         for (int i = 1; i < size_Of_Cluster; ++i) {
-            MPI_Send(&size, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-            MPI_Send(&adj_size, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+            MPI_Send(sizes, 2, MPI_INT, i, 0, MPI_COMM_WORLD);
         }
     }
     else {
-        MPI_Recv(&size, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        MPI_Recv(&adj_size, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        MPI_Recv(sizes, 2, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     }
 
-    //printf("size=%d\n", size);
-    int buf[size];
-    int adjBuf[adj_size];
-    MPI_Scatter(inputImage, size, MPI_INT, buf, size, MPI_INT, 0, MPI_COMM_WORLD);
-    MPI_Scatter(adjMatrix, adj_size, MPI_INT, adjBuf, adj_size, MPI_INT, 0, MPI_COMM_WORLD);
-
-    /*
-        Every node has the partial data they need
-    */
-
+    int buf[sizes[0]];
+    int adj_buf[sizes[1]];
+    MPI_Scatter(inputImage, sizes[0], MPI_INT, buf, sizes[0], MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Scatter(adjMatrix, sizes[1], MPI_INT, adj_buf, sizes[1], MPI_INT, 0, MPI_COMM_WORLD);
 
     int parent = process_Rank;
-    int p_parent = process_Rank;
+    int rec_value = process_Rank;
     int counts[256];
+    int total_counts[256];
     for (int i=0; i < 256; ++i) {
         counts[i] = 0;
-    }
-    int totalCounts[256];
-    for (int i=0; i < 256; ++i) {
-        totalCounts[i] = 0;
+        total_counts[i] = 0;
     }
 
     if (process_Rank != 1) {
-        // wait
-        printf("Process %d is waiting\n", process_Rank);
-        MPI_Recv(&p_parent, 1, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        MPI_Recv(&rec_value, 1, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
         MPI_Recv(counts, 256, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        if (parent == process_Rank){
-            parent = p_parent;
-            adjBuf[parent] = 0;
-        }
-        printf("Process %d is before loop\n", process_Rank);
-        // you are initiator
-        for (int i = 0; i < adj_size; ++i) {
-            if (adjBuf[i] == 1) {
-                // go down path
-                printf("Process %d is sending to Process %d\n", process_Rank, i);
-                MPI_Send(&process_Rank, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-                MPI_Send(counts, 256, MPI_INT, i, 0, MPI_COMM_WORLD);
-                printf("Process %d is waiting\n", process_Rank);
-                MPI_Recv(&p_parent, 1, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                MPI_Recv(counts, 256, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                for (int i=0; i < 256; ++i) {
-                    totalCounts[i] += counts[i];
-                    counts[i] = 0;
-                }
-                // recv  histogram
-            }
-        }
-        printf("Process %d has parent %d\n", process_Rank, parent);
-        for (int i=0; i < size; ++i) {
-                totalCounts[buf[i]] += 1;
-                }
-        MPI_Send(&process_Rank, 1, MPI_INT, parent, 0, MPI_COMM_WORLD);
-        MPI_Send(totalCounts, 256, MPI_INT, parent, 0, MPI_COMM_WORLD);
-
-        /*
-            calculate and send back to parent
-        */
-    }
-    else {
-        printf("Process %d is before loop\n", process_Rank);
-        // you are initiator and u r your own parent
-        for (int i = 0; i < adj_size; ++i) {
-            if (adjBuf[i] == 1) {
-                // go down path
-                // send
-                printf("Process %d is sending to Process %d\n", process_Rank, i);
-                MPI_Send(&process_Rank, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-                MPI_Send(counts, 256, MPI_INT, i, 0, MPI_COMM_WORLD);
-                printf("Process %d is waiting\n", process_Rank);
-                MPI_Recv(&p_parent, 1, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                MPI_Recv(counts, 256, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                for (int i=0; i < 256; ++i) {
-                    totalCounts[i] += counts[i];
-                    counts[i] = 0;
-                }
-                // recv
-            }
-        }
-        printf("Process %d has parent %d\n", process_Rank, parent);
-        for (int i=0; i < size; ++i) {
-                totalCounts[buf[i]] += 1;
-        }
-        
-        for (int i=0; i < 256; ++i) {
-                output[i] = totalCounts[i];
-        }
-        /*
-            Calculate initiator and add to final with others,, no sending back to parent
-            store in global output variable
-        */
+        if (parent == process_Rank) {
+            parent = rec_value;
+            adj_buf[parent] = 0;
+        } 
     }
     
+    for (int i = 0; i < sizes[1]; ++i) {
+        if (adj_buf[i] == 1) {
+            MPI_Send(&process_Rank, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+            MPI_Send(counts, 256, MPI_INT, i, 0, MPI_COMM_WORLD);
+            MPI_Recv(&rec_value, 1, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            MPI_Recv(counts, 256, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            for (int i=0; i < 256; ++i) {
+                total_counts[i] += counts[i];
+                counts[i] = 0;
+            }
+        }
+    }
+    
+    for (int i=0; i < sizes[0]; ++i) {
+            total_counts[buf[i]] += 1;
+    }
 
-    /*
-    for(int i = 0; i < adj_size; ++i)
-        printf("%d ", adjBuf[i]);
-    printf("process %d\n", process_Rank);
-    */
-
-    if (process_Rank == 1) { // changed to 1 because the global output of 1 will have the results
-        output_result(argc, argv);
+    if (process_Rank != 1) {
+        MPI_Send(&process_Rank, 1, MPI_INT, parent, 0, MPI_COMM_WORLD);
+        MPI_Send(total_counts, 256, MPI_INT, parent, 0, MPI_COMM_WORLD);
+    }
+    else {
+        for (int i=0; i < 256; ++i) {
+                outputImage[i] = total_counts[i];
+        }
+    }
+    
+    if (process_Rank == 1) {
+        output_data(argc, argv);
     }
 
     MPI_Finalize();
@@ -173,20 +114,20 @@ int main(int argc, char* argv[])
 }
 
 
-int fill_arrays(int argc, char* argv[])
-{
+int input_data(int argc, char* argv[]){
     if(argc != 4)
     {
-        std::cout << "ERROR: Incorrect number of arguments. Format is: <Input image filename> <Adjacency Matrix filename> <Output filename>" << std::endl;
-        return -1;
+        std::cout << "ERROR: Incorrect number of arguments. Format is: <Grayscale PGM image> <path to text file with the adjacency matrix> <output file name>" << std::endl;
+        return 0;
     }
  
     std::ifstream file(argv[1]);
     if(!file.is_open())
     {
         std::cout << "ERROR: Could not open file " << argv[1] << std::endl;
-        return -1;
+        return 0;
     }
+
 
     /* ******Reading image into 2-D array below******** */
 
@@ -197,7 +138,7 @@ int fill_arrays(int argc, char* argv[])
         if( workString.at(0) != '#' ){
             if( workString.at(1) != '2' ){
                 std::cout << "Input image is not a valid PGM image" << std::endl;
-                return -1;
+                return 0;
             } else {
                 break;
             }       
@@ -242,27 +183,30 @@ int fill_arrays(int argc, char* argv[])
                 if( !stream )
                     break;
                 stream >> pixel_val;
-                inputImage[i*image_width + j] = pixel_val;
+                
+                inputImage[(i*image_width) + j] = pixel_val;
             }
         } else {
             continue;
         }
     }
 
-    /*********** Get Adjacency Matrix ************/
-    std::ifstream adjFile(argv[2]);
-    if(!adjFile.is_open())
+    /******Getting Adjacent Matrix******/
+    std::ifstream file2(argv[2]);
+    if(!file2.is_open())
     {
-        std::cout << "ERROR: Could not open adjacency file " << argv[2] << std::endl;
-        return -1;
+        std::cout << "ERROR: Could not open file " << argv[2] << std::endl;
+        return 0;
     }
 
-    std::string adj_workString;
-    /* Check image size */ 
-    while(std::getline(adjFile,adj_workString))
+
+    /* ******Reading adjacent matrix into 2-D array below******** */
+
+    /* Check adjacency size */ 
+    while(std::getline(file2,workString))
     {
-        if( adj_workString.at(0) != '#' ){
-            std::stringstream stream(adj_workString);
+        if( workString.at(0) != '#' ){
+            std::stringstream stream(workString);
             int n;
             stream >> n;
             adj_width = n;
@@ -273,46 +217,37 @@ int fill_arrays(int argc, char* argv[])
             continue;
         }
     }
-    
+
     /* Fill adjacency matrix */ 
-    int val;
     for( int i = 0; i < adj_height; i++ )
     {
-        if( std::getline(adjFile,adj_workString) && adj_workString.at(0) != '#' ){
-            std::stringstream stream(adj_workString);
+        if( std::getline(file2,workString) && workString.at(0) != '#' ){
+            std::stringstream stream(workString);
             for( int j = 0; j < adj_width; j++ ){
                 if( !stream )
                     break;
-                stream >> val;
-                adjMatrix[i*adj_width + j] = val;
+                stream >> pixel_val;
+                adjMatrix[(i*adj_width) + j] = pixel_val;
             }
         } else {
             continue;
         }
     }
-
-    /*
-    for (int i = 0; i < adj_height; ++i) {
-        for (int j = 0; j < adj_width; ++j)
-            std::cout << adjMatrix[i*adj_width + j] << " ";
-        std::cout << std::endl;
-    }
-    */
-
-    return 0;
+    return 1;
 }
 
-void output_result(int argc, char* argv[])
-{
+int output_data(int argc, char* argv[]){
     /* ********Start writing output to your file************ */
     std::ofstream ofile(argv[3]);
     if( ofile.is_open() )
     {
         for( int i = 0; i < 256; i++ )
         {
-            ofile << output[i] << "\n";
+            ofile << outputImage[i] << "\n";
         }
     } else {
         std::cout << "ERROR: Could not open output file " << argv[3] << std::endl;
+        return 0;
     }
+    return 1;
 }
