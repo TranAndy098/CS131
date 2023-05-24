@@ -15,13 +15,10 @@ int output_data(int argc, char* argv[]);
 // mpic++ -std=c++11 ImplementationA.cpp -o ImplementationA
 // mpirun -np 4 ./ImplementationA test1.pgm adj1.txt output1.txt
 
-// assumption is that adjacency matrix has dimensions similar to pgms
-
 /* Global variables, Look at their usage in main() */
 int image_height;
 int image_width;
-int adj_height;
-int adj_width;
+int size_Of_Cluster;
 int image_maxShades;
 int inputImage[25000000];
 int adjMatrix[25000000];
@@ -31,13 +28,13 @@ int outputImage[256];
 
 int main(int argc, char* argv[])
 {
-    int process_Rank, size_Of_Cluster;
+    int process_Rank;
 
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &size_Of_Cluster);
     MPI_Comm_rank(MPI_COMM_WORLD, &process_Rank);
 
-    int sizes[2];
+    int sizes;
     if (process_Rank == 0)
     {
         if (input_data(argc, argv) == 0)
@@ -45,20 +42,19 @@ int main(int argc, char* argv[])
             MPI_Finalize();
             return 0;
         }
-        sizes[0] = (image_height*image_width)/size_Of_Cluster;
-        sizes[1] = adj_width;
+        sizes = (image_height*image_width)/size_Of_Cluster;
         for (int i = 1; i < size_Of_Cluster; ++i) {
-            MPI_Send(sizes, 2, MPI_INT, i, 0, MPI_COMM_WORLD);
+            MPI_Send(&sizes, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
         }
     }
     else {
-        MPI_Recv(sizes, 2, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        MPI_Recv(&sizes, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
     }
 
-    int buf[sizes[0]];
-    int adj_buf[sizes[1]];
-    MPI_Scatter(inputImage, sizes[0], MPI_INT, buf, sizes[0], MPI_INT, 0, MPI_COMM_WORLD);
-    MPI_Scatter(adjMatrix, sizes[1], MPI_INT, adj_buf, sizes[1], MPI_INT, 0, MPI_COMM_WORLD);
+    int buf[sizes];
+    int adj_buf[size_Of_Cluster];
+    MPI_Scatter(inputImage, sizes, MPI_INT, buf, sizes, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Scatter(adjMatrix, size_Of_Cluster, MPI_INT, adj_buf, size_Of_Cluster, MPI_INT, 0, MPI_COMM_WORLD);
 
     int parent = process_Rank;
     int rec_value = process_Rank;
@@ -78,7 +74,7 @@ int main(int argc, char* argv[])
         } 
     }
     
-    for (int i = 0; i < sizes[1]; ++i) {
+    for (int i = 0; i < size_Of_Cluster; ++i) {
         if (adj_buf[i] == 1) {
             MPI_Send(&process_Rank, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
             MPI_Send(counts, 256, MPI_INT, i, 0, MPI_COMM_WORLD);
@@ -91,7 +87,7 @@ int main(int argc, char* argv[])
         }
     }
     
-    for (int i=0; i < sizes[0]; ++i) {
+    for (int i=0; i < sizes; ++i) {
             total_counts[buf[i]] += 1;
     }
 
@@ -199,35 +195,17 @@ int input_data(int argc, char* argv[]){
         return 0;
     }
 
-
     /* ******Reading adjacent matrix into 2-D array below******** */
-
-    /* Check adjacency size */ 
-    while(std::getline(file2,workString))
-    {
-        if( workString.at(0) != '#' ){
-            std::stringstream stream(workString);
-            int n;
-            stream >> n;
-            adj_width = n;
-            stream >> n;
-            adj_height = n;
-            break;
-        } else {
-            continue;
-        }
-    }
-
     /* Fill adjacency matrix */ 
-    for( int i = 0; i < adj_height; i++ )
+    for( int i = 0; i < size_Of_Cluster; i++ )
     {
         if( std::getline(file2,workString) && workString.at(0) != '#' ){
             std::stringstream stream(workString);
-            for( int j = 0; j < adj_width; j++ ){
+            for( int j = 0; j < size_Of_Cluster; j++ ){
                 if( !stream )
                     break;
                 stream >> pixel_val;
-                adjMatrix[(i*adj_width) + j] = pixel_val;
+                adjMatrix[(i*size_Of_Cluster) + j] = pixel_val;
             }
         } else {
             continue;
